@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Task Scheduler</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header class="app-header">
+    <h1>🔧 Daily Task Scheduler</h1>
+    <div class="header-stats" id="headerStats"></div>
+  </header>
+
+  <main class="layout">
+    <section class="panel today-panel">
+      <h2>Today</h2>
+      <div id="todayContent"></div>
+    </section>
+
+    <section class="panel motivation-panel">
+      <h2>Focus &amp; Motivation</h2>
+      <div id="motivationContent"></div>
+    </section>
+
+    <section class="panel add-task-panel">
+      <h2>Add a task</h2>
+      <form id="addTaskForm">
+        <div class="field">
+          <label for="taskName">Task</label>
+          <input id="taskName" type="text" placeholder="e.g. Flush water heaters — Bldg 3" required>
+          <span class="load-hint" id="loadHint">&nbsp;</span>
+        </div>
+        <div class="field">
+          <label for="taskHours">Est. hours</label>
+          <input id="taskHours" type="number" min="0.25" step="0.25" value="1" required>
+        </div>
+        <div class="field">
+          <label for="taskPeople">People</label>
+          <input id="taskPeople" type="number" min="1" step="1" value="1" required>
+        </div>
+        <div class="field">
+          <label for="taskLoad">Brain load</label>
+          <select id="taskLoad">
+            <option value="auto">Auto</option>
+            <option value="low">Low (routine/cleaning)</option>
+            <option value="medium">Medium</option>
+            <option value="high">High (diagnostic/planning)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="taskNotBefore">Not before (optional)</label>
+          <input id="taskNotBefore" type="date">
+        </div>
+        <button type="submit" class="primary">Add to backlog</button>
+      </form>
+    </section>
+
+    <section class="panel backlog-panel">
+      <h2>Backlog <button type="button" class="small primary" id="scheduleWeekBtn">Auto-Schedule</button></h2>
+      <div id="backlogContent"></div>
+    </section>
+
+    <section class="panel week-panel">
+      <h2>Schedule</h2>
+      <div id="scheduleNav"></div>
+      <div id="weekSettings"></div>
+      <div id="weekContent"></div>
+    </section>
+  </main>
+</div>
+
+<script src="scheduler.js"></script>
+<script src="storage.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
