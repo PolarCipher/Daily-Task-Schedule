@@ -172,7 +172,21 @@
     const totalEnd = Scheduler.DAY_END;
     const rangeMin = totalEnd - totalStart;
 
+    let gutterHtml = '';
+    for (let h = totalStart; h < totalEnd; h += 60) {
+      const top = ((h - totalStart) / rangeMin) * 100;
+      gutterHtml += `<div class="hour-label" style="top:${top}%">${Scheduler.minutesToLabel(h)}</div>`;
+    }
+    // Anchored to the bottom edge instead of a top offset, so its text renders
+    // upward from the boundary and stays inside the box — a top:100% label
+    // would render *below* the box and get clipped by overflow-y: hidden.
+    gutterHtml += `<div class="hour-label" style="bottom:0">${Scheduler.minutesToLabel(totalEnd)}</div>`;
+
     let html = '<div class="week-grid">';
+    html += `<div class="time-gutter">
+      <div class="day-col-head">&nbsp;</div>
+      <div class="gutter-timeline">${gutterHtml}</div>
+    </div>`;
     for (const day of Scheduler.DAYS) {
       const dateStr = Store.dateForWeekDay(viewWeekStart, day);
       let blocksHtml = '';
@@ -207,7 +221,7 @@
       let gridHtml = '';
       for (let h = totalStart; h <= totalEnd; h += 60) {
         const top = ((h - totalStart) / rangeMin) * 100;
-        gridHtml += `<div class="hour-row" style="top:${top}%">${day === 'mon' ? Scheduler.minutesToLabel(h) : ''}</div>`;
+        gridHtml += `<div class="hour-row" style="top:${top}%"></div>`;
       }
 
       const isToday = dateStr === todayDateStr;

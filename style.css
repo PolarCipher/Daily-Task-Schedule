@@ -165,12 +165,15 @@ input, select {
 
 /* ---- Week view ---- */
 #weekSettings { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 0.85rem; color: var(--text-dim); }
-.week-grid { display: grid; grid-template-columns: repeat(5, minmax(140px, 1fr)); gap: 8px; overflow-x: auto; }
+.week-grid { display: grid; grid-template-columns: 42px repeat(5, minmax(140px, 1fr)); gap: 8px; overflow-x: auto; overflow-y: hidden; }
+.time-gutter { display: flex; flex-direction: column; }
+.gutter-timeline { position: relative; height: 480px; }
+.hour-label { position: absolute; left: 0; right: 0; font-size: 0.62rem; color: var(--text-dim); text-align: right; padding-right: 4px; white-space: nowrap; }
 .day-col { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .day-col-head { padding: 6px 8px; font-size: 0.8rem; font-weight: 600; background: var(--bg); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
 .day-col-head .day-flex { font-weight: 400; color: var(--text-dim); font-size: 0.72rem; }
 .day-timeline { position: relative; height: 480px; }
-.hour-row { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--border); font-size: 0.62rem; color: var(--text-dim); padding-left: 3px; }
+.hour-row { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--border); }
 .day-block {
   position: absolute; left: 3px; right: 3px; border-radius: 6px; padding: 3px 6px;
   font-size: 0.68rem; color: #fff; overflow: hidden; line-height: 1.25;
