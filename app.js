@@ -30,7 +30,7 @@
   let state = Store.load();
   Store.migrate(state);
   Store.rollover(state, new Date());
-  Store.save(state);
+  let saveFailed = !Store.save(state);
 
   // ---------- View (browsing) state — not persisted, always starts on "now" ----------
   let viewMode = 'week'; // 'week' | 'month'
@@ -58,7 +58,7 @@
   }
 
   function persistAndRender() {
-    Store.save(state);
+    saveFailed = !Store.save(state);
     render();
   }
 
@@ -69,7 +69,11 @@
     const activeWeekState = Store.ensureWeek(state, activeWeek);
     const flexLeft = Scheduler.WEEKLY_FLEX_BUDGET - Scheduler.totalFlexUsed(activeWeekState);
     const todayKey = Store.dayKeyOf(now);
+    const warningChip = saveFailed
+      ? '<span class="stat-chip warning">⚠ Not saving — your browser is blocking storage (private mode?)</span>'
+      : '';
     document.getElementById('headerStats').innerHTML = `
+      ${warningChip}
       <span class="stat-chip">This week: <b>${activeWeek}</b></span>
       <span class="stat-chip">Flex left: <b>${flexLeft}h</b> / ${Scheduler.WEEKLY_FLEX_BUDGET}h</span>
       <span class="stat-chip">${todayKey ? escapeHtml(Scheduler.DAY_LABELS[todayKey]) : 'Weekend'}</span>

@@ -112,7 +112,13 @@
   }
 
   function save(state) {
-    localStorage.setItem(KEY, JSON.stringify(state));
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state));
+      return true;
+    } catch (e) {
+      console.warn('Failed to save schedule.', e);
+      return false;
+    }
   }
 
   function ensureWeek(state, weekStart) {
