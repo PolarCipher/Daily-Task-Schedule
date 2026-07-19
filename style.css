@@ -17,7 +17,7 @@
   --flex: repeating-linear-gradient(45deg, #cfd4dc, #cfd4dc 4px, #e4e7ec 4px, #e4e7ec 8px);
   --radius: 10px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
-  --gutter-width: 42px; /* the week/day-view time gutter, read live by app.js rather than duplicated there */
+  --gutter-width: 56px; /* the week/day-view time gutter, read live by app.js rather than duplicated there — wide enough for "10:00 AM"/"12:00 PM" without wrapping or overflow */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -179,6 +179,7 @@ input, select {
 .gutter-timeline { position: relative; height: 480px; }
 .hour-label { position: absolute; left: 0; right: 0; font-size: 0.62rem; color: var(--text-dim); text-align: right; padding-right: 4px; white-space: nowrap; }
 .day-col { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.day-col.today { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
 .day-col-head { padding: 6px 8px; font-size: 0.8rem; font-weight: 600; background: var(--bg); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
 .day-col-head .day-flex { font-weight: 400; color: var(--text-dim); font-size: 0.72rem; }
 .day-timeline { position: relative; height: 480px; }
@@ -239,10 +240,17 @@ input, select {
 
 /* ---- Month view: phone-width layout ----
    "Wednesday" has no natural break point, so at 1/5 of a phone's width the
-   full day names run tight — swap to 3-letter abbreviations instead. */
+   full day names run tight — swap to 3-letter abbreviations instead. Below
+   this width the month grid also becomes a swipeable strip of three real
+   months (prev/current/next), same scroll-snap technique as the Week view's
+   day strip — see app.js's renderMonthGrid. overflow-y: hidden for the same
+   reason as .week-grid: overflow-x: auto alone silently makes the y-axis
+   scrollable too, which would trap vertical page scroll inside the strip. */
 @media (max-width: 640px) {
   .month-head-cell .full { display: none; }
   .month-head-cell .abbr { display: inline; }
+  .month-strip { display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; }
+  .month-page { flex: 0 0 100%; scroll-snap-align: start; }
 }
 
 /* ---- Today panel ---- */

@@ -3,14 +3,15 @@
 
   const AUTO_SCHEDULE_HORIZON_WEEKS = 26; // ~6 months out, comfortably covers season-out tasks
 
-  // Must match the width in style.css's "Week view: phone-width layout" media
-  // query — plain CSS has no way to expose a computed media-query value to
-  // JS, so this one number is an unavoidable, hand-kept duplicate.
+  // Must match the width in style.css's phone-width media queries — plain
+  // CSS has no way to expose a computed media-query value to JS, so this one
+  // number is an unavoidable, hand-kept duplicate. Shared by both the Week
+  // view's single-day strip and the Month view's single-month strip.
   const MOBILE_BREAKPOINT = 640; // px
   // A MediaQueryList is cheap to hold but wasteful to recreate every render
   // (render() fires on every action and on a 60s timer) — build it once.
   const mobileMQL = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
-  function isMobileWeekView() {
+  function isMobileLayout() {
     return mobileMQL.matches;
   }
 
@@ -234,6 +235,29 @@
     return closest;
   }
 
+  // Scrolls .month-strip so the given month's page is flush with the left
+  // edge. Same instant-vs-smooth split as scrollToDay, and reuses
+  // columnOffsetX since a month page's position within its scroll strip is
+  // the same measurement problem as a day column's — no gutter to offset for
+  // here, so it's simpler.
+  function scrollToMonth(stripEl, monthKey, behavior) {
+    const targetPage = stripEl.querySelector(`.month-page[data-month="${monthKey}"]`);
+    if (targetPage) stripEl.scrollTo({ left: columnOffsetX(stripEl, targetPage), behavior });
+  }
+
+  // Which month page is currently most scrolled-into-view, used to detect
+  // that a swipe has settled on a different month than the center one.
+  function closestMonthKey(stripEl) {
+    const pages = stripEl.querySelectorAll('.month-page');
+    let closest = null;
+    let bestDist = Infinity;
+    pages.forEach((page) => {
+      const dist = Math.abs(columnOffsetX(stripEl, page) - stripEl.scrollLeft);
+      if (dist < bestDist) { bestDist = dist; closest = page.dataset.month; }
+    });
+    return closest;
+  }
+
   function renderWeekGrid() {
     const now = new Date();
     const todayDateStr = Store.toDateStr(now);
@@ -295,7 +319,7 @@
       }
 
       const isToday = dateStr === todayDateStr;
-      html += `<div class="day-col" data-day="${day}">
+      html += `<div class="day-col${isToday ? ' today' : ''}" data-day="${day}">
         <div class="day-col-head"><span>${Scheduler.DAY_LABELS[day]}${isToday ? ' 📍' : ''}</span><span class="day-flex">${formatDateLabel(dateStr).split(', ')[1] || ''}</span></div>
         <div class="day-timeline">${gridHtml}${blocksHtml}</div>
       </div>`;
@@ -315,17 +339,17 @@
     // so none of this applies — the in-between desktop range (640-880px)
     // keeps its original plain horizontal-scroll-if-needed behavior.
     const gridEl = document.querySelector('.week-grid');
-    if (gridEl && isMobileWeekView()) {
+    if (gridEl && isMobileLayout()) {
       scrollToDay(gridEl, viewDayIndex, 'instant');
     }
   }
 
-  function renderMonthGrid() {
-    const now = new Date();
-    const todayDateStr = Store.toDateStr(now);
-    const rows = Store.monthGrid(viewMonth);
-    let html = `<div class="month-head-row">${Scheduler.DAYS.map(d => `<div class="month-head-cell"><span class="full">${Scheduler.DAY_LABELS[d]}</span><span class="abbr">${Scheduler.DAY_LABELS[d].slice(0, 3)}</span></div>`).join('')}</div>`;
-    html += '<div class="month-grid">';
+  // The day-of-week header row plus one month's grid of date cells. Shared
+  // between the desktop single-month view and each page of the mobile
+  // swipeable strip.
+  function renderMonthCells(monthKey, todayDateStr) {
+    const rows = Store.monthGrid(monthKey);
+    let html = '<div class="month-grid">';
     for (const row of rows) {
       for (const cell of row.days) {
         const dayTasks = state.tasks.filter(t => (t.blocks || []).some(b => b.dateStr === cell.dateStr));
@@ -341,7 +365,36 @@
       }
     }
     html += '</div>';
-    document.getElementById('weekContent').innerHTML = html;
+    return html;
+  }
+
+  function adjacentMonthKey(monthKey, offset) {
+    const [y, m] = monthKey.split('-').map(Number);
+    return monthKeyOf(new Date(y, m - 1 + offset, 1));
+  }
+
+  function renderMonthGrid() {
+    const now = new Date();
+    const todayDateStr = Store.toDateStr(now);
+    const headHtml = `<div class="month-head-row">${Scheduler.DAYS.map(d => `<div class="month-head-cell"><span class="full">${Scheduler.DAY_LABELS[d]}</span><span class="abbr">${Scheduler.DAY_LABELS[d].slice(0, 3)}</span></div>`).join('')}</div>`;
+
+    if (!isMobileLayout()) {
+      document.getElementById('weekContent').innerHTML = headHtml + renderMonthCells(viewMonth, todayDateStr);
+      return;
+    }
+
+    // Mobile: render the previous/current/next month side by side, same
+    // technique as the Week view's single-day strip — swiping either
+    // direction reveals real, already-rendered content immediately rather
+    // than needing to fetch/build it mid-gesture.
+    const monthKeys = [-1, 0, 1].map(offset => adjacentMonthKey(viewMonth, offset));
+    const stripHtml = monthKeys
+      .map(mk => `<div class="month-page" data-month="${mk}">${renderMonthCells(mk, todayDateStr)}</div>`)
+      .join('');
+    document.getElementById('weekContent').innerHTML = `${headHtml}<div class="month-strip">${stripHtml}</div>`;
+
+    const stripEl = document.querySelector('.month-strip');
+    if (stripEl) scrollToMonth(stripEl, viewMonth, 'instant');
   }
 
   function renderSchedulePanel() {
@@ -730,22 +783,35 @@
     }
   });
 
-  // Tracks manual swipes on the mobile single-day view so viewDayIndex stays
-  // correct even when the user drags rather than tapping the Day buttons.
-  // Registered once here (not inside renderWeekGrid) because .week-grid is
-  // torn down and rebuilt on every render() — a listener bound directly to
-  // it would need re-binding every time and could fire against an already-
-  // detached node. scroll events don't bubble, so this needs the capture
-  // phase on #weekContent, which — unlike .week-grid — is never replaced,
-  // only its contents are.
+  // Tracks manual swipes on the mobile single-day/single-month strips so
+  // viewDayIndex/viewMonth stay correct even when the user drags rather than
+  // tapping the nav buttons. Registered once here (not inside renderWeekGrid
+  // / renderMonthGrid) because .week-grid/.month-strip are torn down and
+  // rebuilt on every render() — a listener bound directly to either would
+  // need re-binding every time and could fire against an already-detached
+  // node. scroll events don't bubble, so this needs the capture phase on
+  // #weekContent, which — unlike its children — is never replaced, only its
+  // contents are. Week and Month are never visible at once, so one timer
+  // covers both.
   let scrollSettleTimer = null;
   document.getElementById('weekContent').addEventListener('scroll', (e) => {
-    const gridEl = e.target;
-    if (!gridEl.classList || !gridEl.classList.contains('week-grid')) return;
-    clearTimeout(scrollSettleTimer);
-    scrollSettleTimer = setTimeout(() => {
-      viewDayIndex = closestDayIndex(gridEl);
-    }, 120);
+    const el = e.target;
+    if (!el.classList) return;
+    if (el.classList.contains('week-grid')) {
+      clearTimeout(scrollSettleTimer);
+      scrollSettleTimer = setTimeout(() => {
+        viewDayIndex = closestDayIndex(el);
+      }, 120);
+    } else if (el.classList.contains('month-strip')) {
+      clearTimeout(scrollSettleTimer);
+      scrollSettleTimer = setTimeout(() => {
+        const settled = closestMonthKey(el);
+        if (settled && settled !== viewMonth) {
+          viewMonth = settled;
+          renderSchedulePanel();
+        }
+      }, 120);
+    }
   }, true);
 
   document.getElementById('scheduleWeekBtn').addEventListener('click', handleAutoSchedule);
