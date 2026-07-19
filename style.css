@@ -17,6 +17,7 @@
   --flex: repeating-linear-gradient(45deg, #cfd4dc, #cfd4dc 4px, #e4e7ec 4px, #e4e7ec 8px);
   --radius: 10px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --gutter-width: 42px; /* the week/day-view time gutter, read live by app.js rather than duplicated there */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -84,6 +85,12 @@ body {
 }
 
 .panel {
+  /* Grid/flex items default to min-width: auto (never shrink below content's
+     natural size) even when their own children wrap correctly. .panel is a
+     grid item of .layout, so without this override, one wide-enough child
+     anywhere inside it stops the whole panel — and the page — from shrinking
+     any further below that content's width. */
+  min-width: 0;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -95,6 +102,7 @@ body {
   margin: 0 0 12px;
   font-size: 1rem;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -136,11 +144,11 @@ input, select {
 /* ---- Backlog ---- */
 .backlog-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .backlog-item {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
   padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--bg);
 }
-.backlog-item .name { flex: 1; font-weight: 500; }
+.backlog-item .name { flex: 1; min-width: 100px; font-weight: 500; }
 .backlog-item .meta { font-size: 0.78rem; color: var(--text-dim); white-space: nowrap; }
 .load-badge {
   font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: #fff; white-space: nowrap;
@@ -154,8 +162,9 @@ input, select {
 #scheduleNav { margin-bottom: 10px; }
 .nav-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .view-toggle { display: flex; gap: 4px; }
-.nav-controls { display: flex; align-items: center; gap: 6px; }
+.nav-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .nav-label { font-weight: 600; font-size: 0.85rem; margin-left: 6px; white-space: nowrap; }
+.mobile-day-nav { display: none; align-items: center; gap: 10px; margin-top: 8px; }
 
 /* ---- Backlog inline edit ---- */
 .backlog-item.editing { flex-wrap: wrap; }
@@ -165,7 +174,7 @@ input, select {
 
 /* ---- Week view ---- */
 #weekSettings { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 0.85rem; color: var(--text-dim); }
-.week-grid { display: grid; grid-template-columns: 42px repeat(5, minmax(140px, 1fr)); gap: 8px; overflow-x: auto; overflow-y: hidden; }
+.week-grid { display: grid; grid-template-columns: var(--gutter-width) repeat(5, minmax(140px, 1fr)); gap: 8px; overflow-x: auto; overflow-y: hidden; }
 .time-gutter { display: flex; flex-direction: column; }
 .gutter-timeline { position: relative; height: 480px; }
 .hour-label { position: absolute; left: 0; right: 0; font-size: 0.62rem; color: var(--text-dim); text-align: right; padding-right: 4px; white-space: nowrap; }
@@ -188,11 +197,28 @@ input, select {
 .day-block.flex-empty { cursor: pointer; border: 1px dashed var(--border); background: transparent; color: var(--text-dim); }
 .day-block.flex-empty:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ---- Week view: phone-width layout ----
+   Below this width the 5-day grid becomes a swipeable single-day strip: each
+   day column snaps to fill the screen, and the time gutter sticks to the left
+   edge so the hour labels stay put while you swipe between days. */
+@media (max-width: 640px) {
+  .mobile-day-nav { display: flex; }
+  /* scroll-padding-left tells the snap machinery the scrollport's effective
+     left edge is --gutter-width in, not 0 — otherwise scroll-snap-align:
+     start has no way to know the sticky gutter is visually covering that
+     space, and keeps re-snapping columns to sit underneath it. */
+  .week-grid { display: flex; scroll-snap-type: x mandatory; scroll-padding-left: var(--gutter-width); }
+  .time-gutter { position: sticky; left: 0; z-index: 2; flex: 0 0 var(--gutter-width); background: var(--panel); }
+  .day-col { flex: 0 0 calc(100% - var(--gutter-width)); scroll-snap-align: start; }
+}
+
 /* ---- Month view ---- */
 .month-head-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 6px; }
-.month-head-cell { font-size: 0.75rem; font-weight: 600; color: var(--text-dim); text-align: center; }
+.month-head-cell { min-width: 0; font-size: 0.75rem; font-weight: 600; color: var(--text-dim); text-align: center; }
+.month-head-cell .abbr { display: none; }
 .month-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .month-cell {
+  min-width: 0;
   border: 1px solid var(--border); border-radius: 8px; padding: 6px; min-height: 96px;
   background: var(--bg); display: flex; flex-direction: column; gap: 4px; cursor: pointer;
 }
@@ -211,10 +237,18 @@ input, select {
 .month-chip.done { opacity: 0.5; text-decoration: line-through; }
 .month-chip-more { font-size: 0.62rem; color: var(--text-dim); }
 
+/* ---- Month view: phone-width layout ----
+   "Wednesday" has no natural break point, so at 1/5 of a phone's width the
+   full day names run tight — swap to 3-letter abbreviations instead. */
+@media (max-width: 640px) {
+  .month-head-cell .full { display: none; }
+  .month-head-cell .abbr { display: inline; }
+}
+
 /* ---- Today panel ---- */
 .today-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .today-item {
-  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
 }
 .today-item.current { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
@@ -223,7 +257,7 @@ input, select {
 .load-dot.low { background: var(--low); }
 .load-dot.medium { background: var(--medium); }
 .load-dot.high { background: var(--high); }
-.today-item .info { flex: 1; }
+.today-item .info { flex: 1; min-width: 100px; }
 .today-item .name { font-weight: 500; }
 .today-item.done .name { text-decoration: line-through; }
 .today-item .time { font-size: 0.78rem; color: var(--text-dim); }

@@ -3,6 +3,17 @@
 
   const AUTO_SCHEDULE_HORIZON_WEEKS = 26; // ~6 months out, comfortably covers season-out tasks
 
+  // Must match the width in style.css's "Week view: phone-width layout" media
+  // query — plain CSS has no way to expose a computed media-query value to
+  // JS, so this one number is an unavoidable, hand-kept duplicate.
+  const MOBILE_BREAKPOINT = 640; // px
+  // A MediaQueryList is cheap to hold but wasteful to recreate every render
+  // (render() fires on every action and on a 60s timer) — build it once.
+  const mobileMQL = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
+  function isMobileWeekView() {
+    return mobileMQL.matches;
+  }
+
   const BRAIN_BREAKS = [
     'Quick trivia: what’s the standard slope for drain pipe? (¼ inch of drop per foot)',
     'Mental math: a ¾" pipe flows ~8 GPM at 8 ft/s — roughly what would a 1" pipe flow at the same velocity?',
@@ -37,6 +48,14 @@
   let viewWeekStart = Store.activeWeekStart(new Date());
   let viewMonth = monthKeyOf(new Date());
   let editingTaskId = null;
+
+  function dayIndexOf(date) {
+    const k = Store.dayKeyOf(date);
+    return k ? Scheduler.DAYS.indexOf(k) : 0;
+  }
+  // Which day column is focused in the mobile single-day view. Only matters
+  // below the phone-width breakpoint — desktop shows all 5 days at once.
+  let viewDayIndex = dayIndexOf(new Date());
 
   function monthKeyOf(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -126,6 +145,15 @@
     const label = viewMode === 'week'
       ? `Week of ${viewWeekStart}`
       : new Date(viewMonth + '-01T00:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    // Only shown on phone-width screens (see .mobile-day-nav in style.css) —
+    // desktop shows all 5 days at once, so there's no single "day" to step through.
+    const mobileDayNav = viewMode === 'week'
+      ? `<div class="mobile-day-nav">
+          <button type="button" class="small" data-action="scroll-day" data-dir="-1">‹ Day</button>
+          <span class="nav-label">${Scheduler.DAY_LABELS[Scheduler.DAYS[viewDayIndex]]}</span>
+          <button type="button" class="small" data-action="scroll-day" data-dir="1">Day ›</button>
+        </div>`
+      : '';
     el.innerHTML = `
       <div class="nav-row">
         <div class="view-toggle">
@@ -138,7 +166,8 @@
           <button type="button" class="small" data-action="nav-next">Next →</button>
           <span class="nav-label">${label}</span>
         </div>
-      </div>`;
+      </div>
+      ${mobileDayNav}`;
   }
 
   function renderWeekSettings() {
@@ -162,6 +191,47 @@
     const top = ((start - totalStart) / rangeMin) * 100;
     const height = ((end - start) / rangeMin) * 100;
     return `top:${top}%;height:${height}%`;
+  }
+
+  // A day column's horizontal position within .week-grid's own scrollable
+  // content, independent of ancestor positioning. offsetLeft won't do here:
+  // it's measured relative to the nearest *positioned* ancestor, and nothing
+  // between .week-grid and <body> sets position, so it was picking up extra
+  // padding from #app and .panel along the way instead of being relative to
+  // the grid itself.
+  function columnOffsetX(gridEl, colEl) {
+    return colEl.getBoundingClientRect().left - gridEl.getBoundingClientRect().left + gridEl.scrollLeft;
+  }
+
+  // Measured live from the DOM rather than hardcoded, so it can never drift
+  // out of sync with style.css's --gutter-width the way a duplicated JS
+  // constant could.
+  function gutterWidth(gridEl) {
+    const gutterEl = gridEl.querySelector('.time-gutter');
+    return gutterEl ? gutterEl.getBoundingClientRect().width : 0;
+  }
+
+  // Scrolls .week-grid so the given day sits flush against the sticky gutter.
+  // behavior: 'instant' to restore position after a re-render (no visible
+  // motion), 'smooth' when the user explicitly navigates via the Day buttons.
+  function scrollToDay(gridEl, dayIndex, behavior) {
+    const targetCol = gridEl.querySelector(`.day-col[data-day="${Scheduler.DAYS[dayIndex]}"]`);
+    if (targetCol) gridEl.scrollTo({ left: columnOffsetX(gridEl, targetCol) - gutterWidth(gridEl), behavior });
+  }
+
+  // Which day column is currently most scrolled-into-view, used to keep
+  // viewDayIndex in sync after the user swipes/drags rather than just when
+  // they tap the Day buttons.
+  function closestDayIndex(gridEl) {
+    const gw = gutterWidth(gridEl);
+    const cols = gridEl.querySelectorAll('.day-col');
+    let closest = 0;
+    let bestDist = Infinity;
+    cols.forEach((col, i) => {
+      const dist = Math.abs((columnOffsetX(gridEl, col) - gw) - gridEl.scrollLeft);
+      if (dist < bestDist) { bestDist = dist; closest = i; }
+    });
+    return closest;
   }
 
   function renderWeekGrid() {
@@ -225,20 +295,36 @@
       }
 
       const isToday = dateStr === todayDateStr;
-      html += `<div class="day-col">
+      html += `<div class="day-col" data-day="${day}">
         <div class="day-col-head"><span>${Scheduler.DAY_LABELS[day]}${isToday ? ' 📍' : ''}</span><span class="day-flex">${formatDateLabel(dateStr).split(', ')[1] || ''}</span></div>
         <div class="day-timeline">${gridHtml}${blocksHtml}</div>
       </div>`;
     }
     html += '</div>';
     document.getElementById('weekContent').innerHTML = html;
+
+    // Below MOBILE_BREAKPOINT, .week-grid becomes a swipeable single-day strip
+    // (see the matching media query in style.css) with a sticky time gutter
+    // pinned over its left edge. This element gets torn down and rebuilt on
+    // every render() — including the 60s auto-refresh — so without this, a
+    // re-render would silently snap the view back to day 0 (Monday) out from
+    // under someone mid-swipe. Restoring is instant (no animation). Manual
+    // swipes are tracked separately by a delegated listener registered once
+    // in the Wiring section below, rather than re-bound here on every call.
+    // Above the breakpoint the grid isn't in this flex/sticky layout at all,
+    // so none of this applies — the in-between desktop range (640-880px)
+    // keeps its original plain horizontal-scroll-if-needed behavior.
+    const gridEl = document.querySelector('.week-grid');
+    if (gridEl && isMobileWeekView()) {
+      scrollToDay(gridEl, viewDayIndex, 'instant');
+    }
   }
 
   function renderMonthGrid() {
     const now = new Date();
     const todayDateStr = Store.toDateStr(now);
     const rows = Store.monthGrid(viewMonth);
-    let html = `<div class="month-head-row">${Scheduler.DAYS.map(d => `<div class="month-head-cell">${Scheduler.DAY_LABELS[d]}</div>`).join('')}</div>`;
+    let html = `<div class="month-head-row">${Scheduler.DAYS.map(d => `<div class="month-head-cell"><span class="full">${Scheduler.DAY_LABELS[d]}</span><span class="abbr">${Scheduler.DAY_LABELS[d].slice(0, 3)}</span></div>`).join('')}</div>`;
     html += '<div class="month-grid">';
     for (const row of rows) {
       for (const cell of row.days) {
@@ -598,13 +684,24 @@
     const now = new Date();
     viewWeekStart = Store.activeWeekStart(now);
     viewMonth = monthKeyOf(now);
+    viewDayIndex = dayIndexOf(now);
     render();
   }
 
   function handleJumpWeek(dateStr) {
     viewWeekStart = Store.toDateStr(Store.mondayOf(new Date(dateStr + 'T00:00:00')));
     viewMode = 'week';
+    viewDayIndex = dayIndexOf(new Date(dateStr + 'T00:00:00'));
     render();
+  }
+
+  // Mobile day-nav buttons: moves the swipeable single-day view without a
+  // full re-render, so it can animate smoothly instead of jumping instantly.
+  function handleScrollDay(dir) {
+    viewDayIndex = Math.max(0, Math.min(Scheduler.DAYS.length - 1, viewDayIndex + dir));
+    const gridEl = document.querySelector('.week-grid');
+    if (gridEl) scrollToDay(gridEl, viewDayIndex, 'smooth');
+    renderScheduleNav(); // update the "Day" label/buttons without touching scroll position
   }
 
   // ---------- Wiring ----------
@@ -629,8 +726,27 @@
       case 'nav-next': handleNav(1); break;
       case 'nav-today': handleNavToday(); break;
       case 'jump-week': handleJumpWeek(el.dataset.date); break;
+      case 'scroll-day': handleScrollDay(Number(el.dataset.dir)); break;
     }
   });
+
+  // Tracks manual swipes on the mobile single-day view so viewDayIndex stays
+  // correct even when the user drags rather than tapping the Day buttons.
+  // Registered once here (not inside renderWeekGrid) because .week-grid is
+  // torn down and rebuilt on every render() — a listener bound directly to
+  // it would need re-binding every time and could fire against an already-
+  // detached node. scroll events don't bubble, so this needs the capture
+  // phase on #weekContent, which — unlike .week-grid — is never replaced,
+  // only its contents are.
+  let scrollSettleTimer = null;
+  document.getElementById('weekContent').addEventListener('scroll', (e) => {
+    const gridEl = e.target;
+    if (!gridEl.classList || !gridEl.classList.contains('week-grid')) return;
+    clearTimeout(scrollSettleTimer);
+    scrollSettleTimer = setTimeout(() => {
+      viewDayIndex = closestDayIndex(gridEl);
+    }, 120);
+  }, true);
 
   document.getElementById('scheduleWeekBtn').addEventListener('click', handleAutoSchedule);
 
